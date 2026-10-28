@@ -50,24 +50,35 @@ $('search').addEventListener('input',render);$('filter').addEventListener('chang
 function parseMoneyString(s){return String(s||'').replace(/R\$/g,'').trim()}
 function parseReportText(text){
  let ls=text.replace(/\r/g,'').split('\n').map(x=>x.replace(/\u00a0/g,' ')),out=[];
- const oldRow=/^\s*(\d{8})\s+(\S+)\s+(.*)$/;
- const oldSuffix=/^(.*?)\s*([A-Z]{1,10})\s+(#{1,}|[-\d.,]+)\s+R\$\s*([\d.,]+)\s+R\$\s*([\d.,]+)\s*$/;
+ // Formato 1: NCM + código de barras + descrição + unidade + quantidade + venda unitária + total.
+ const oldRow=/^\s*(\d{8})\s+(\d{8,15})\s+(.*)$/;
+ const oldSuffix=/^(.*?)\s*([A-ZÀ-ÿ]{1,10})\s+(#{1,}|-?[\d.,]+)\s+R\$\s*([\d.,]+)\s+R\$\s*([\d.,]+)\s*$/;
+ // Formato 2 (Balanço TIAPPS): Código + Descrição + Unidade + Qtd. + Venda Unit. + Total venda.
+ const balanceRow=/^\s*(\d{1,15})\s+(.+?)\s+([A-Za-zÀ-ÿ]{1,10})\s+(-?[\d.,]+)\s+R\$\s*([\d.,]+)\s+R\$\s*([\d.,]+)\s*$/;
  for(let i=0;i<ls.length;i++){
   let line=ls[i].trim();if(!line)continue;
+  // Só classifica como formato antigo quando há claramente dois códigos numéricos
+  // no início (NCM de 8 dígitos e, em seguida, código/EAN).
   let m=line.match(oldRow);
   if(m){
-   let ncm=m[1],code=m[2],rest=m[3].trim(),trailing=code.match(/^(\d+)(\D.*)$/);
-   if(trailing){code=trailing[1];rest=trailing[2]+' '+rest}
+   let ncm=m[1],code=m[2],rest=m[3].trim();
    if(!oldSuffix.test(rest)&&i+1<ls.length){rest+=' '+ls[i+1].trim();i++}
    let s=rest.match(oldSuffix);
-   if(s){let description=s[1].replace(/\s+/g,' ').trim();if(description)out.push({ncm,code,description,unit:s[2],qty:s[3],price:s[4],total:s[5],reportFormat:'ncm-barcode'});continue}
+   if(s){
+    let description=s[1].replace(/\s+/g,' ').trim();
+    if(description)out.push({ncm,code,description,unit:s[2].toUpperCase(),qty:s[3],price:s[4],total:s[5],reportFormat:'ncm-barcode'});
+    continue;
+   }
   }
-  // Segundo formato TIAPPS: Código interno, Descricao, Unidade, Qtd., Venda Unit., Total venda.
-  let n=line.match(/^\s*(\d{1,15})\s+(.+?)\s+([A-Za-zÀ-ÿ]{1,10})\s+(-?\d[\d.,]*)\s+R\$\s*([\d.,]+)\s+R\$\s*([\d.,]+)\s*$/);
+  // Balanço não contém coluna NCM separada. Preserva o código original como código interno;
+  // se ele tiver comprimento típico de EAN/UPC, também o disponibiliza para leitura por câmera.
+  let n=line.match(balanceRow);
   if(n){
-   let description=n[2].replace(/\s+/g,' ').trim();
-   if(description&&!/^(c[oó]digo|data|tabela de pre[cç]o)/i.test(description))
-    out.push({ncm:'',code:'',internalCode:n[1],description,unit:n[3].toUpperCase(),qty:n[4],price:n[5],total:n[6],reportFormat:'codigo-interno'});
+   let rawCode=n[1],description=n[2].replace(/\s+/g,' ').trim(),codeDigits=rawCode.replace(/\D/g,'');
+   if(description&&!/^(c[oó]digo|data|tabela de pre[cç]o)/i.test(description)){
+    let isBarcode=[8,12,13,14].includes(codeDigits.length);
+    out.push({ncm:'',code:isBarcode?codeDigits:'',internalCode:rawCode,description,unit:n[3].toUpperCase(),qty:n[4],price:n[5],total:n[6],reportFormat:'balanco-tiapps'});
+   }
   }
  }
  return out
