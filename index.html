@@ -32,7 +32,7 @@ function quantity(v){let n=typeof v==='number'?v:num(v);return Number.isFinite(n
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function digits(v){return String(v??'').replace(/\D/g,'')}
 function validGtin(value){let s=digits(value);if(![8,12,13,14].includes(s.length))return false;let sum=0,weight=3;for(let i=s.length-2;i>=0;i--){sum+=Number(s[i])*weight;weight=weight===3?1:3}return (10-(sum%10))%10===Number(s[s.length-1])}
-function alertList(p){let a=[];let n=String(p.ncm??'').trim();if(!/^\d{8}$/.test(n)||n==='00000000')a.push({type:'red',label:'NCM ausente/inválido'});let c=digits(p.code);if(![8,12,13,14].includes(c.length))a.push({type:'red',label:'Código incompleto'});else if(!validGtin(c))a.push({type:'red',label:'Dígito verificador'});if(c&&products.filter(q=>digits(q.code)===c).length>1)a.push({type:'red',label:'Código duplicado'});if(!String(p.description||'').trim())a.push({type:'red',label:'Sem descrição'});let q=num(p.qty);if(!Number.isFinite(q))a.push({type:'red',label:'Quantidade inválida'});else if(q<0)a.push({type:'red',label:'Estoque negativo'});else if(q===0)a.push({type:'warn',label:'Estoque zerado'});let pr=num(p.price);if(!Number.isFinite(pr)||pr<=0)a.push({type:'red',label:'Preço inválido'});let total=num(p.total);if(Number.isFinite(q)&&Number.isFinite(pr)&&Number.isFinite(total)&&Math.abs(q*pr-total)>0.03)a.push({type:'red',label:'Total divergente'});if(String(p.qty).includes('#')||String(p.total).replace(/\D/g,'').length>9)a.push({type:'red',label:'Dado corrompido no PDF'});if(p.physical!==undefined&&p.physical!==null&&String(p.physical).trim()!==''){let phys=num(p.physical);if(Number.isFinite(phys)&&Number.isFinite(q)&&Math.abs(phys-q)>0.0005)a.push({type:'red',label:'Divergência física'});else if(!Number.isFinite(phys))a.push({type:'red',label:'Contagem inválida'})}if(p.missingLatest)a.push({type:'warn',label:'Ausente no último PDF'});if(p.changedPrice)a.push({type:'warn',label:'Preço alterado'});if(p.notesText)a.push({type:'warn',label:'Observação'});return a}
+function alertList(p){let a=[];let n=String(p.ncm??'').trim();if(!/^\d{8}$/.test(n)||n==='00000000')a.push({type:'red',label:'NCM ausente/inválido'});let c=digits(p.code);if(!c)a.push({type:'red',label:'Código ausente'});else if([8,12,13,14].includes(c.length)&&!validGtin(c))a.push({type:'warn',label:'Conferir dígito verificador'});if(c&&products.filter(q=>digits(q.code)===c).length>1)a.push({type:'red',label:'Código duplicado'});if(!String(p.description||'').trim())a.push({type:'red',label:'Sem descrição'});let q=num(p.qty);if(!Number.isFinite(q))a.push({type:'red',label:'Quantidade inválida'});else if(q<0)a.push({type:'red',label:'Estoque negativo'});else if(q===0)a.push({type:'warn',label:'Estoque zerado'});let pr=num(p.price);if(!Number.isFinite(pr)||pr<=0)a.push({type:'red',label:'Preço inválido'});let total=num(p.total);if(Number.isFinite(q)&&Number.isFinite(pr)&&Number.isFinite(total)&&Math.abs(q*pr-total)>0.03)a.push({type:'red',label:'Total divergente'});if(String(p.qty).includes('#')||String(p.total).replace(/\D/g,'').length>9)a.push({type:'red',label:'Dado corrompido no PDF'});if(p.physical!==undefined&&p.physical!==null&&String(p.physical).trim()!==''){let phys=num(p.physical);if(Number.isFinite(phys)&&Number.isFinite(q)&&Math.abs(phys-q)>0.0005)a.push({type:'red',label:'Divergência física'});else if(!Number.isFinite(phys))a.push({type:'red',label:'Contagem inválida'})}if(p.missingLatest)a.push({type:'warn',label:'Ausente no último PDF'});if(p.changedPrice)a.push({type:'warn',label:'Preço alterado'});if(p.notesText)a.push({type:'warn',label:'Observação'});return a}
 function status(p){let a=alertList(p);return a.some(x=>x.type==='red')?'issue':a.length?'warning':'ok'}
 function save(){localStorage.setItem(STORE,JSON.stringify({products,lastImportDate,version:1}));$('savedAt').textContent=new Date().toLocaleString('pt-BR')}
 function load(){try{let d=JSON.parse(localStorage.getItem(STORE)||'null');if(d&&Array.isArray(d.products)){products=d.products;lastImportDate=d.lastImportDate||lastImportDate}else products=clone(INITIAL)}catch(e){products=clone(INITIAL)} $('lastImport').textContent='Último PDF: '+lastImportDate;save()}
@@ -49,52 +49,57 @@ document.addEventListener('click',e=>{let ed=e.target.closest('[data-edit]'),ct=
 $('search').addEventListener('input',render);$('filter').addEventListener('change',()=>{reportOnlyIssues=false;render()});$('sort').addEventListener('change',render);$('addBtn').onclick=()=>openEdit(null);$('importBtn').onclick=()=>$('pdfFile').click();$('scanBtn').onclick=()=>{openModal('scanModal');$('scanInput').focus()};$('printBtn').onclick=()=>{reportOnlyIssues=false;$('reportHead').style.display='block';window.print()};$('reportFilterBtn').onclick=()=>{reportOnlyIssues=true;$('filter').value='all';render();$('reportHead').style.display='block';window.print();reportOnlyIssues=false;render()};window.addEventListener('afterprint',()=>$('reportHead').style.display='none');
 function parseMoneyString(s){return String(s||'').replace(/R\$/g,'').trim()}
 function parseReportText(text){
- let ls=text.replace(/\r/g,'').split('\n').map(x=>x.replace(/\u00a0/g,' ')),out=[];
- // Formato 1: NCM + código de barras + descrição + unidade + quantidade + venda unitária + total.
- const oldRow=/^\s*(\d{8})\s+(\d{8,15})\s+(.*)$/;
- const oldSuffix=/^(.*?)\s*([A-ZÀ-ÿ]{1,10})\s+(#{1,}|-?[\d.,]+)\s+R\$\s*([\d.,]+)\s+R\$\s*([\d.,]+)\s*$/;
- // Formato 2 (Balanço TIAPPS): Código + Descrição + Unidade + Qtd. + Venda Unit. + Total venda.
- const balanceRow=/^\s*(\d{1,15})\s+(.+?)\s+([A-Za-zÀ-ÿ]{1,10})\s+(-?[\d.,]+)\s+R\$\s*([\d.,]+)\s+R\$\s*([\d.,]+)\s*$/;
- for(let i=0;i<ls.length;i++){
-  let line=ls[i].trim();if(!line)continue;
-  // Só classifica como formato antigo quando há claramente dois códigos numéricos
-  // no início (NCM de 8 dígitos e, em seguida, código/EAN).
-  let m=line.match(oldRow);
+ const lines=String(text||'').replace(/\r/g,'').replace(/\u00a0/g,' ').split('\n');
+ const out=[],seen=new Set();
+ const money='(?:R\\s*\\$\\s*)?([#-]?[\\d.,]+)';
+ for(let raw of lines){
+  let line=raw.replace(/\s+/g,' ').trim();if(!line)continue;
+  // Balanço TIAPPS: primeira coluna é sempre o código a importar.
+  // Captura as colunas finais pela unidade, quantidade e valores, tolerando variações de espaços.
+  let m=line.match(/^(\d{1,15})\s+(.+?)\s+(UNID|UN|KG|GR|GRAMAS|LITRO|L|CX|PCT|FD|DUZIA)\s+(-?[\d.,]+)\s+(?:R\s*\$\s*)?([#-]?[\d.,]+)\s+(?:R\s*\$\s*)?([#-]?[\d.,]+)\s*$/i);
   if(m){
-   let ncm=m[1],code=m[2],rest=m[3].trim();
-   if(!oldSuffix.test(rest)&&i+1<ls.length){rest+=' '+ls[i+1].trim();i++}
-   let s=rest.match(oldSuffix);
-   if(s){
-    let description=s[1].replace(/\s+/g,' ').trim();
-    if(description)out.push({ncm,code,description,unit:s[2].toUpperCase(),qty:s[3],price:s[4],total:s[5],reportFormat:'ncm-barcode'});
-    continue;
-   }
-  }
-  // Balanço TIAPPS: o relatório pode trazer apenas Código, Descrição e Unidade,
-  // com quantidade em linha separada e sem preço/total. Todo código da primeira coluna
-  // deve ser preservado como código de barras, mesmo quando curto (ex.: 4934).
-  let n=line.match(balanceRow);
-  if(n){
-   let rawCode=n[1],description=n[2].replace(/\s+/g,' ').trim(),codeDigits=rawCode.replace(/\D/g,'');
+   let code=m[1].replace(/\D/g,''),description=m[2].trim(),unit=m[3].toUpperCase();
    if(description&&!/^(c[oó]digo|data|tabela de pre[cç]o)/i.test(description)){
-    out.push({ncm:'',code:codeDigits,internalCode:rawCode,description,unit:n[3].toUpperCase(),qty:n[4],price:n[5],total:n[6],reportFormat:'balanco-tiapps'});
+    let key=code+'|'+description.toLocaleLowerCase('pt-BR')+'|'+unit;
+    if(!seen.has(key)){out.push({ncm:'',code,internalCode:code,description,unit,qty:m[4],price:m[5],total:m[6],reportFormat:'balanco-tiapps'});seen.add(key)}
    }
    continue;
   }
-  // Formato resumido mostrado no balanço: código + descrição + unidade, sem colunas de valor.
-  const simpleBalanceRow=/^\s*(\d{1,15})\s+(.+?)\s+(UNID|UN|KG|GR|GRAMAS|LITRO|L|CX|PCT|FD|DUZIA)\s*$/i;
-  let simple=line.match(simpleBalanceRow);
-  if(simple){
-   let rawCode=simple[1],description=simple[2].replace(/\s+/g,' ').trim(),codeDigits=rawCode.replace(/\D/g,'');
+  // Também aceita linhas resumidas com código, descrição e unidade.
+  m=line.match(/^(\d{1,15})\s+(.+?)\s+(UNID|UN|KG|GR|GRAMAS|LITRO|L|CX|PCT|FD|DUZIA)\s*$/i);
+  if(m){
+   let code=m[1].replace(/\D/g,''),description=m[2].trim(),unit=m[3].toUpperCase();
    if(description&&!/^(c[oó]digo|data|tabela de pre[cç]o)/i.test(description)){
-    out.push({ncm:'',code:codeDigits,internalCode:rawCode,description,unit:simple[3].toUpperCase(),reportFormat:'balanco-tiapps'});
+    let key=code+'|'+description.toLocaleLowerCase('pt-BR')+'|'+unit;
+    if(!seen.has(key)){out.push({ncm:'',code,internalCode:code,description,unit,reportFormat:'balanco-tiapps'});seen.add(key)}
    }
   }
+  // Formato antigo com NCM e código em colunas separadas.
+  m=line.match(/^(\d{8})\s+(\d{8,15})\s+(.+?)\s+(UNID|UN|KG|GR|GRAMAS|LITRO|L|CX|PCT|FD|DUZIA)\s+(-?[\d.,]+)\s+(?:R\s*\$\s*)?([#-]?[\d.,]+)\s+(?:R\s*\$\s*)?([#-]?[\d.,]+)\s*$/i);
+  if(m){out.push({ncm:m[1],code:m[2],description:m[3].trim(),unit:m[4].toUpperCase(),qty:m[5],price:m[6],total:m[7],reportFormat:'ncm-barcode'})}
  }
  return out
 }
 async function loadPdfJs(){if(window.pdfjsLib)return window.pdfjsLib;await new Promise((resolve,reject)=>{let s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';s.onload=resolve;s.onerror=()=>reject(new Error('Não foi possível carregar o leitor de PDF. Confere a conexão com a internet.'));document.head.appendChild(s)});return window.pdfjsLib}
-async function pdfToText(file){let lib=await loadPdfJs();lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';let buf=await file.arrayBuffer(),pdf=await lib.getDocument({data:buf}).promise,all=[];for(let p=1;p<=pdf.numPages;p++){let page=await pdf.getPage(p),content=await page.getTextContent(),items=content.items.filter(x=>x.str&&x.str.trim()).map(x=>({s:x.str,x:x.transform[4],y:x.transform[5]}));items.sort((a,b)=>Math.abs(a.y-b.y)>2?b.y-a.y:a.x-b.x);let lines=[];for(let it of items){let line=lines.find(l=>Math.abs(l.y-it.y)<=2.2);if(!line){line={y:it.y,items:[]};lines.push(line)}line.items.push(it)}lines.sort((a,b)=>b.y-a.y);for(let l of lines){l.items.sort((a,b)=>a.x-b.x);all.push(l.items.map(x=>x.s.trim()).filter(Boolean).join(' '))}all.push('\n')}return all.join('\n')}
+async function pdfToText(file){
+ let lib=await loadPdfJs();
+ lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ let buf=await file.arrayBuffer(),pdf=await lib.getDocument({data:buf}).promise,all=[];
+ for(let p=1;p<=pdf.numPages;p++){
+  let page=await pdf.getPage(p),content=await page.getTextContent();
+  let items=content.items.filter(x=>x.str&&x.str.trim()).map(x=>({s:x.str,x:x.transform[4],y:x.transform[5]}));
+  let lines=[];
+  for(let it of items){
+   let line=lines.find(l=>Math.abs(l.y-it.y)<=2.5);
+   if(!line){line={y:it.y,items:[]};lines.push(line)}
+   line.items.push(it);
+  }
+  lines.sort((a,b)=>b.y-a.y);
+  for(let l of lines){l.items.sort((a,b)=>a.x-b.x);all.push(l.items.map(x=>x.s.trim()).filter(Boolean).join(' '))}
+  all.push('');
+ }
+ return all.join('\n')
+}
 function matchKey(p){let c=digits(p.code);return c?'code:'+c:'desc:'+String(p.description||'').trim().toLocaleLowerCase('pt-BR')+'|'+String(p.unit||'').toUpperCase()}
 $('pdfFile').addEventListener('change',async e=>{let file=e.target.files[0];e.target.value='';if(!file)return;try{toast('Lendo PDF…');let text=await pdfToText(file);let parsed=parseReportText(text);if(!parsed.length){toast('Não consegui reconhecer as linhas deste PDF. Usa um relatório TIAPPS com as mesmas colunas.',true);return}if(parsed.length<100){toast('O PDF retornou poucos produtos ('+parsed.length+'). A substituição foi bloqueada para proteger a base. Confere se selecionaste o Balanço TIAPPS completo.',true);return}let bad=parsed.filter(p=>!p.description||!p.price||!p.qty).length;importCandidate={fileName:file.name,parsed,when:new Date().toLocaleDateString('pt-BR')};let matched=0,added=0;let keys=new Set(products.map(matchKey));for(let p of parsed){if(keys.has(matchKey(p)))matched++;else added++} $('confirmBody').innerHTML=`<p>O PDF <strong>${esc(file.name)}</strong> foi lido.</p><div class="form-grid"><div class="stat"><div class="label">Itens reconhecidos</div><div class="num">${parsed.length}</div></div><div class="stat"><div class="label">Possíveis novos itens</div><div class="num">${added}</div></div></div><p>Serão atualizados os itens identificados (descrição, unidade, quantidade, preço e total); NCM e código de barras já cadastrados serão preservados quando não existirem no PDF; produtos novos serão adicionados e produtos ausentes serão sinalizados.</p><label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid #cad7ce;border-radius:10px;margin:12px 0"><input type="checkbox" id="replaceBaseOnImport" checked style="margin-top:4px"><span><strong>Substituir toda a base anterior por este balanço</strong><br>Remove os produtos do inventário antigo e mantém somente os itens deste PDF. Um backup JSON da base atual será baixado automaticamente antes da substituição.</span></label>${bad?`<p style="color:#b42318"><strong>Atenção:</strong> ${bad} linha(s) podem ter campos incompletos e serão sinalizadas após a importação.</p>`:''}<p class="smallnote">Nenhum dado será enviado ao TIAPPS. Recomendado fazer backup JSON antes de atualizar.</p>`;openModal('confirmModal')}catch(err){console.error(err);toast(err.message||'Falha ao ler PDF.',true)}});
 $('confirmImportBtn').onclick=()=>{if(!importCandidate)return;let parsed=importCandidate.parsed;let replaceBase=$('replaceBaseOnImport')?.checked===true;if(replaceBase){if(parsed.length<100){toast('Substituição bloqueada: poucos produtos reconhecidos no PDF.',true);return}downloadFile(JSON.stringify({products,lastImportDate,exportedAt:new Date().toISOString()},null,2),'application/json','backup_antes_substituicao_estoque.json');products=[];}let oldByKey=new Map();for(let p of products){let k=matchKey(p);if(!oldByKey.has(k))oldByKey.set(k,p)}let seen=new Set(),updated=0,added=0;for(let incoming of parsed){let k=matchKey(incoming),old=oldByKey.get(k);if(!old&&incoming.internalCode){let dn=String(incoming.description||'').trim().toLocaleLowerCase('pt-BR'),un=String(incoming.unit||'').toUpperCase();old=products.find(q=>String(q.description||'').trim().toLocaleLowerCase('pt-BR')===dn&&String(q.unit||'').toUpperCase()===un)}if(old){let oldPrice=num(old.price),newPrice=num(incoming.price);if(Number.isFinite(oldPrice)&&Number.isFinite(newPrice)&&Math.abs(oldPrice-newPrice)>.0001){old.previousPrice=old.price;old.changedPrice=true;old.priceChangedAt=new Date().toISOString()}else if(Number.isFinite(oldPrice)&&Number.isFinite(newPrice)&&Math.abs(oldPrice-newPrice)<.0001){old.changedPrice=false}let safeIncoming={...incoming};if(!safeIncoming.ncm)safeIncoming.ncm=old.ncm||'';if(!safeIncoming.code)safeIncoming.code=old.code||'';if(!safeIncoming.internalCode)safeIncoming.internalCode=old.internalCode||'';for(const field of ['qty','price','total'])if(safeIncoming[field]===undefined||safeIncoming[field]===null||safeIncoming[field]==='')safeIncoming[field]=old[field]??'';Object.assign(old,safeIncoming,{missingLatest:false,lastSeenImport:importCandidate.when});seen.add(old.id);updated++}else{let p={...incoming,id:'import-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),previousPrice:null,changedPrice:false,missingLatest:false,physical:'',lastSeenImport:importCandidate.when};products.push(p);seen.add(p.id);oldByKey.set(k,p);added++}}let missing=0;for(let p of products){if(!seen.has(p.id)){p.missingLatest=true;missing++}}lastImportDate=importCandidate.when;save();closeModal('confirmModal');importCandidate=null;render();toast(`Importação concluída: ${updated} atualizados, ${added} novos e ${missing} ausentes no novo relatório.`)};
