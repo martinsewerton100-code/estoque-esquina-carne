@@ -27,6 +27,21 @@ const INITIAL=[];
 const STORE='esquina_estoque_conferencia_v1';
 let products=[], editId=null, importCandidate=null, reportOnlyIssues=false, cameraStream=null, scanTimer=null, lastImportDate='28/10/2026', currentPage=1; const PAGE_SIZE=100; const HISTORY_STORE='esquina_estoque_history_v1'; let historyItems=[]; let codeCounts=new Map();
 const $=id=>document.getElementById(id);
+document.addEventListener('click',function(ev){
+ const b=ev.target.closest('button'); if(!b)return;
+ const actions={
+  menuStock:()=>showStock(),
+  menuHistory:()=>showHistory(),
+  menuImport:()=> $('pdfFile').click(),
+  menuScan:()=>{openModal('scanModal');$('scanInput').focus()},
+  menuAdd:()=>openEdit(null),
+  menuBackup:()=>{if(confirm('Deseja exportar um backup JSON agora? Escolha Cancelar para restaurar um backup.'))$('backupBtn').click();else $('restoreBtn').click()},
+  headerMenuBtn:()=>showMenu(),
+  backMenuBtn:()=>showMenu(),
+  historyBackBtn:()=>showMenu()
+ };
+ const action=actions[b.id]; if(action){ev.preventDefault();ev.stopImmediatePropagation();action()}
+},true);
 function clone(x){return JSON.parse(JSON.stringify(x))}
 function num(v){if(v===null||v===undefined||v==='')return NaN; if(typeof v==='number')return v; let s=String(v).trim().replace(/R\$/gi,'').replace(/\s/g,''); if(s.includes(',')){s=s.replace(/\./g,'').replace(',','.')} return Number(s)}
 function money(v){let n=typeof v==='number'?v:num(v);return Number.isFinite(n)?n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'}
